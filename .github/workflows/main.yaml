@@ -12,23 +12,23 @@ jobs:
         shell: bash -l {0}
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - uses: conda-incubator/setup-miniconda@v3
-      with:
-        miniforge-version: "latest"
-        environment-file: conda/env.yaml
-        channels: conda-forge,nodefaults
-        activate-environment: mermaidascii
-        auto-update-conda: true
-        conda-solver: libmamba
-        python-version: "3.11"
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: "latest"
+          environment-file: conda/env.yaml
+          channels: conda-forge,nodefaults
+          activate-environment: mermaidascii
+          auto-update-conda: true
+          conda-solver: libmamba
+          python-version: "3.11"
 
-    - name: Install package
-      run: |
+      - name: Install package
+        run: |
           poetry build
           poetry install
           pip install $(ls dist/mermaid*tar.gz)
 
-    - name: Test cmd & binary
-      run: make smoke-test
+      - name: Test cmd & binary
+        run: make smoke-test

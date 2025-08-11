@@ -30,3 +30,36 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry.build]
 script = "scripts/binary.py"
 generate-setup-file = false
+
+
+[tool.ruff]
+line-length = 79
+force-exclude = true
+src = ["./mermaid_ascii", "./scripts", "./tests"]
+exclude = [
+  "docs",
+]
+fix = true
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle
+  "F",   # pyflakes
+  "D",   # pydocstyle
+  "YTT", # flake8-2020
+  "PL",  # PL
+  "RUF", # Ruff-specific rules
+  "I001", # isort
+  "I002", # isort
+]
+ignore = ["RUF012"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.isort]
+# Use a single line between direct and from import
+lines-between-types = 1
+
+[tool.ruff.format]
+quote-style = "single"

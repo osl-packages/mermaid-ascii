@@ -3,20 +3,18 @@ name: release
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 0 * * 0'
+    - cron: "0 0 * * 0"
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     defaults:
       run:
         shell: bash -l {0}
-
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,48 +30,68 @@ jobs:
           conda-solver: libmamba
           python-version: "3.11"
 
-      - name: Build package
+      - name: Build package (re-bundle & bump local pyproject if upstream changed)
+        id: buildpkg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
-          TWINE_REPOSITORY_URL: https://upload.pypi.org/legacy/
         run: |
-          make binary  # update package version
+          set -euo pipefail
+          make binary
           poetry build
+          # extract version from pyproject AFTER versioning
+          VER="$(python scripts/get_version.py)"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          # mark if pyproject changed
+          if git diff --quiet -- pyproject.toml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Release
-        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
-          TWINE_REPOSITORY_URL: https://upload.pypi.org/legacy/
+      - name: Check tag existence
+        id: tagcheck
         run: |
-          poetry config pypi-token.pypi ${PYPI_TOKEN}
-          poetry publish
+          if git rev-parse -q --verify "refs/tags/${{ steps.buildpkg.outputs.version }}"; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: export mermaid-ascii version
-        id: mermaid-ascii-version
-        run: |
-          echo "VERSION=$(git tag --sort=-v:refname|head -n 1)" >> "$GITHUB_OUTPUT"
-
+      # Commit & tag only when version changed (schedule/dispatch runs)
       - name: Commit changes
+        if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && steps.buildpkg.outputs.changed == 'true' && steps.tagcheck.outputs.exists != 'true' }}
         uses: EndBug/add-and-commit@v9
-        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}
         with:
           author_name: Ivan Ogasawara
           author_email: ivan.ogasawara@gmail.com
-          message: 'Changes for ${{ steps.docker-compose-version.outputs.VERSION }}'
-          add: 'pyproject.toml'
+          message: "Bump mermaid-ascii to ${{ steps.buildpkg.outputs.version }}"
+          add: "pyproject.toml"
+          tag: "${{ steps.buildpkg.outputs.version }}"
 
+      # Publish to PyPI only when new version
+      - name: Release to PyPI
+        if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && steps.buildpkg.outputs.changed == 'true' && steps.tagcheck.outputs.exists != 'true' }}
+        env:
+          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          poetry config pypi-token.pypi "${PYPI_TOKEN}"
+          poetry publish
+
+      # Create GitHub Release from the tag we just created
       - name: Create Release
-        id: create_release
-        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}
+        if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && steps.buildpkg.outputs.changed == 'true' && steps.tagcheck.outputs.exists != 'true' }}
         uses: actions/create-release@latest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ steps.mermaid-ascii-version.outputs.VERSION }}
-          release_name: Release ${{ steps.mermaid-ascii-version.outputs.VERSION }}
-          body: Update mermaid-ascii with new version
+          tag_name: ${{ steps.buildpkg.outputs.version }}
+          release_name: Release ${{ steps.buildpkg.outputs.version }}
+          body: Update mermaid-ascii to ${{ steps.buildpkg.outputs.version }}
           draft: false
           prerelease: false
+
+      # Optional: no-op when unchanged (gives clear logs)
+      - name: Nothing to release
+        if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && steps.buildpkg.outputs.changed != 'true' || steps.tagcheck.outputs.exists != 'true' }}
+        run: echo "Up-to-date. No release."

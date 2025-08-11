@@ -18,7 +18,7 @@ include = [
 ]
 
 [tool.poetry.scripts]
-mermaid-ascii = "mermaid:docker_compose"
+mermaid-ascii = "mermaid_ascii:mermaid_ascii"
 
 [tool.poetry.dependencies]
 python = ">=3.9,<4"

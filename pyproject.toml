@@ -1,6 +1,6 @@
 [project]
 name = "mermaid-ascii"
-version = "0.6.0"  # mermaid-ascii version
+version = "0.6.1"  # mermaid-ascii version
 description = "Mermaid-ASCII (GoLang) wrapped in a Python Package"
 authors = [
   { name = "Ivan Ogasawara", email = "ivan.ogasawara@gmail.com"},

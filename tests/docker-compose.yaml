@@ -1,0 +1,4 @@
+services:
+  hello-world:
+    hostname: hello-wolrd
+    image: hello-world

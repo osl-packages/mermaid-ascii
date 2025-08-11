@@ -1,0 +1,79 @@
+name: release
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 0'
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        shell: bash -l {0}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: "latest"
+          environment-file: conda/env.yaml
+          channels: conda-forge,nodefaults
+          activate-environment: mermaidascii
+          auto-update-conda: true
+          conda-solver: libmamba
+          python-version: "3.11"
+
+      - name: Build package
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+          TWINE_REPOSITORY_URL: https://upload.pypi.org/legacy/
+        run: |
+          make binary  # update package version
+          poetry build
+
+      - name: Release
+        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+          TWINE_REPOSITORY_URL: https://upload.pypi.org/legacy/
+        run: |
+          poetry config pypi-token.pypi ${PYPI_TOKEN}
+          poetry publish
+
+      - name: export mermaid-ascii version
+        id: mermaid-ascii-version
+        run: |
+          echo "VERSION=$(git tag --sort=-v:refname|head -n 1)" >> "$GITHUB_OUTPUT"
+
+      - name: Commit changes
+        uses: EndBug/add-and-commit@v9
+        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}
+        with:
+          author_name: Ivan Ogasawara
+          author_email: ivan.ogasawara@gmail.com
+          message: 'Changes for ${{ steps.docker-compose-version.outputs.VERSION }}'
+          add: 'pyproject.toml'
+
+      - name: Create Release
+        id: create_release
+        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}
+        uses: actions/create-release@latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.mermaid-ascii-version.outputs.VERSION }}
+          release_name: Release ${{ steps.mermaid-ascii-version.outputs.VERSION }}
+          body: Update mermaid-ascii with new version
+          draft: false
+          prerelease: false

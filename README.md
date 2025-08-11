@@ -1,2 +1,4 @@
-# mermaid-ascii
-Python rebundle for mermaid-ascii project https://github.com/AlexanderGrooff/mermaid-ascii
+``` bash
+$ pip install compose-go
+$ docker-compose version
+```

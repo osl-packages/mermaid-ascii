@@ -92,11 +92,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Install Go first so we can capture its absolute path
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.22.x"
-
       # Resolve GO_BIN path (cross-shell safe)
       - name: Resolve go path
         id: gopath
@@ -115,9 +110,20 @@ jobs:
           conda-solver: libmamba
           python-version: "3.11"
 
-      - name: Ensure make on Windows
+      - name: Force GOROOT for conda go (Windows)
         if: runner.os == 'Windows'
-        run: conda install -y m2-make
+        shell: bash
+        run: |
+          set -e
+          GO_BIN="$(command -v go)"
+          # Guess GOROOT relative to go.exe: .../bin/go.exe -> two dirs up
+          GOROOT_DIR="$(cd "$(dirname "$GO_BIN")/.." && pwd -W)"
+          echo "Using go at: $GO_BIN"
+          echo "Setting GOROOT to: $GOROOT_DIR"
+          echo "GOROOT=$GOROOT_DIR" >> "$GITHUB_ENV"
+          echo "$GOROOT_DIR/bin" >> "$GITHUB_PATH"
+          go version
+          go env
 
       - name: Build OS-specific binary and wheel
         env:

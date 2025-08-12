@@ -11,26 +11,24 @@ MERMAIDASCII_DIR="$PROJECT_DIR/build/mermaid_ascii"
 
 rm -rf "$MERMAIDASCII_DIR"
 git clone https://github.com/AlexanderGrooff/mermaid-ascii "$MERMAIDASCII_DIR"
+
 pushd "$MERMAIDASCII_DIR" >/dev/null
 
-MERMAIDASCII_VERSION="$(git tag --sort=-v:refname | head -n 1)"
+MERMAIDASCII_VERSION="$(git tag --sort=-v:refname|head -n 1)"
 git checkout "$MERMAIDASCII_VERSION"
 
 if $BUMP; then
-  echo "[II] Bumping pyproject version to $MERMAIDASCII_VERSION ..."
-  "$PROJECT_DIR/scripts/versioning.sh" "$MERMAIDASCII_VERSION"
+  echo "[II] Bumping pyproject version to ${MERMAIDASCII_VERSION} (post-build: ${BUILD_NUMBER:-none}) ..."
+  # Forward the optional build number as 2nd arg (may be empty)
+  "$PROJECT_DIR/scripts/versioning.sh" "$MERMAIDASCII_VERSION" "${BUILD_NUMBER:-}"
 fi
 
-# Use the go resolved by the workflow; fallback to PATH 'go'
-GO_CMD="${GO_BIN:-go}"
-
+# Build OS-specific binary
 BIN_NAME="mermaid-ascii"
 if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
   BIN_NAME="mermaid-ascii.exe"
 fi
-
-"$GO_CMD" version
-"$GO_CMD" build -o "$BIN_NAME"
+go build -o "$BIN_NAME"
 
 mkdir -p "$PROJECT_DIR/src/mermaid_ascii"
 cp -f "$BIN_NAME" "$PROJECT_DIR/src/mermaid_ascii/$BIN_NAME"

@@ -81,7 +81,16 @@ jobs:
         shell: pwsh
         run: |
           poetry build
-          python -m pip install dist/*.whl || python -m pip install dist/*.tar.gz
+          Get-ChildItem dist | Format-Table -AutoSize
+
+          $pkg = Get-ChildItem dist\*.whl -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $pkg) {
+            $pkg = Get-ChildItem dist\*.tar.gz -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
+          if (-not $pkg) { throw "No artifacts in dist/ after poetry build." }
+
+          python -m pip install -U pip
+          python -m pip install "$($pkg.FullName)"
 
       - name: Smoke test (Windows, Python API)
         if: matrix.os == 'windows-latest'

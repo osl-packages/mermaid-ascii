@@ -103,19 +103,6 @@ jobs:
           conda-solver: libmamba
           python-version: "3.11"
 
-      # ---------- Linux/macOS (Conda + Bash) ----------
-      - name: Setup Conda (Windows)
-        if: matrix.os == 'windows-latest'
-        uses: conda-incubator/setup-miniconda@v3
-        with:
-          miniforge-version: "latest"
-          environment-file: conda/env-ci-win.yaml
-          channels: conda-forge,nodefaults
-          activate-environment: mermaidascii
-          auto-update-conda: true
-          conda-solver: libmamba
-          python-version: "3.11"
-
       - name: Build upstream binary (Unix)
         if: matrix.os != 'windows-latest'
         shell: bash -l {0}
@@ -125,38 +112,38 @@ jobs:
           poetry build
           ls -l dist
 
-      # ---------- Windows (setup-go + setup-python + PowerShell) ----------
+      # ---------- Windows path (PowerShell + setup-go + setup-python) ----------
       - name: Setup Go (Windows)
         if: matrix.os == 'windows-latest'
         uses: actions/setup-go@v5
         with:
           go-version: "1.22.x"
 
-      # - name: Setup Python (Windows)
-      #   if: matrix.os == 'windows-latest'
-      #   uses: actions/setup-python@v5
-      #   with:
-      #     python-version: "3.11"
+      - name: Setup Python (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-      #- name: Install Poetry (Windows)
-      #  if: matrix.os == 'windows-latest'
-      #  shell: pwsh
-      #  run: |
-      #    python -m pip install -U pip
-      #    python -m pip install poetry
+      - name: Install Poetry (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          python -m pip install -U pip
+          python -m pip install poetry
 
       - name: Build upstream binary (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          ./scripts/binary.ps1             # <-- PowerShell variant
+          ./scripts/binary.ps1
 
-      - name: Build wheel (Windows)
+      - name: Build & install package (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
           poetry build
-          Get-ChildItem dist
+          Get-ChildItem dist | Format-Table -AutoSize
 
       # ---------- Common ----------
       - name: Upload wheels (artifact)

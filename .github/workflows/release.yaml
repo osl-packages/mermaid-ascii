@@ -42,7 +42,7 @@ jobs:
           PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
         run: |
           set -euo pipefail
-          make binary
+          bash ./scripts/binary.sh --bump
           poetry build
           VER="$(python scripts/get_version.py)"
           echo "version=$VER" >> "$GITHUB_OUTPUT"
@@ -92,10 +92,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.22.x"
-
       - uses: conda-incubator/setup-miniconda@v3
         with:
           miniforge-version: "latest"
@@ -106,16 +102,23 @@ jobs:
           conda-solver: libmamba
           python-version: "3.11"
 
-      - name: Ensure make on Windows
-        if: runner.os == 'Windows'
-        run: conda install -y m2-make
+      # Put Go after conda so it wins on PATH (fixes Windows GOROOT issue)
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+
+      - name: Show Go info
+        run: |
+          which go || where go || true
+          go version
+          go env
 
       - name: Build OS-specific binary and wheel
         run: |
           set -euo pipefail
-          make binary
+          bash ./scripts/binary.sh
           poetry build
-          ls -l dist
+          ls -l dist || dir dist
 
       - name: Upload wheels (artifact)
         uses: actions/upload-artifact@v4

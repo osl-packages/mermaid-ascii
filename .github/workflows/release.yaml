@@ -80,7 +80,6 @@ jobs:
     needs: prep
     if: ${{ needs.prep.outputs.changed == 'true' && needs.prep.outputs.tag_exists != 'true' }}
     runs-on: ${{ matrix.os }}
-
     strategy:
       fail-fast: false
       matrix:
@@ -91,9 +90,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      # ---------- Linux/macOS path (Conda + Bash) ----------
+      # ---------- Linux/macOS (Conda + Bash) ----------
       - name: Setup Conda (Unix)
-        if: runner.os != 'Windows'
+        if: matrix.os != 'windows-latest'
         uses: conda-incubator/setup-miniconda@v3
         with:
           miniforge-version: "latest"
@@ -104,8 +103,9 @@ jobs:
           conda-solver: libmamba
           python-version: "3.11"
 
+      # ---------- Linux/macOS (Conda + Bash) ----------
       - name: Setup Conda (Windows)
-        if: runner.os == 'Windows'
+        if: matrix.os == 'windows-latest'
         uses: conda-incubator/setup-miniconda@v3
         with:
           miniforge-version: "latest"
@@ -117,35 +117,48 @@ jobs:
           python-version: "3.11"
 
       - name: Build upstream binary (Unix)
-        if: runner.os != 'Windows'
+        if: matrix.os != 'windows-latest'
         shell: bash -l {0}
         run: |
           set -euo pipefail
-          bash ./scripts/binary.sh   # no --bump in matrix
+          bash ./scripts/binary.sh         # <-- Only runs on Linux/macOS
           poetry build
           ls -l dist
 
-      # ---------- Windows path (PowerShell + setup-go + setup-python) ----------
+      # ---------- Windows (setup-go + setup-python + PowerShell) ----------
       - name: Setup Go (Windows)
-        if: runner.os == 'Windows'
+        if: matrix.os == 'windows-latest'
         uses: actions/setup-go@v5
         with:
           go-version: "1.22.x"
 
+      # - name: Setup Python (Windows)
+      #   if: matrix.os == 'windows-latest'
+      #   uses: actions/setup-python@v5
+      #   with:
+      #     python-version: "3.11"
+
+      #- name: Install Poetry (Windows)
+      #  if: matrix.os == 'windows-latest'
+      #  shell: pwsh
+      #  run: |
+      #    python -m pip install -U pip
+      #    python -m pip install poetry
+
       - name: Build upstream binary (Windows)
-        if: runner.os == 'Windows'
+        if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          ./scripts/binary.ps1
+          ./scripts/binary.ps1             # <-- PowerShell variant
 
       - name: Build wheel (Windows)
-        if: runner.os == 'Windows'
+        if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
           poetry build
           Get-ChildItem dist
 
-      # ---------- Common: upload artifact ----------
+      # ---------- Common ----------
       - name: Upload wheels (artifact)
         uses: actions/upload-artifact@v4
         with:

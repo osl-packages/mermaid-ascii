@@ -7,26 +7,18 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import List
+from typing import List, Tuple, Optional
 
 
 def _candidate_basenames() -> list[str]:
-    """
-    Return candidate executable basenames for this platform.
-
-    We include both names so the same code path works in editable installs too.
-    """
+    """Return executable basenames to try for this platform."""
     if platform.system() == 'Windows':
         return ['mermaid-ascii.exe', 'mermaid-ascii']
     return ['mermaid-ascii', 'mermaid-ascii.exe']
 
 
-def _find_packaged_binary() -> Path | None:
-    """
-    Look for the packaged binary next to this module.
-
-    Returns the first existing candidate or None.
-    """
+def _find_packaged_binary() -> Optional[Path]:
+    """Look for the packaged binary next to this module."""
     pkg_dir = Path(__file__).parent
     for name in _candidate_basenames():
         p = pkg_dir / name
@@ -37,17 +29,16 @@ def _find_packaged_binary() -> Path | None:
 
 def _resolve_binary() -> str:
     """
-    Resolve the mermaid-ascii executable to run.
+    Resolve the mermaid-ascii executable.
 
     Order:
-      1) Packaged binary in this wheel (next to this module).
-      2) System PATH lookup (useful in dev).
+      1) Packaged binary in this wheel (next to this module)
+      2) System PATH
     """
     packaged = _find_packaged_binary()
     if packaged is not None:
         return str(packaged)
 
-    # Fallback to PATH
     exe_name = (
         'mermaid-ascii.exe'
         if platform.system() == 'Windows'
@@ -59,36 +50,83 @@ def _resolve_binary() -> str:
 
     raise FileNotFoundError(
         "Could not find the 'mermaid-ascii' binary. "
-        'Make sure the wheel includes it (see pyproject include) '
-        "or that 'mermaid-ascii' is on PATH."
+        'Ensure the wheel includes it or that it is on PATH.'
     )
+
+
+def _extract_file_arg(argv: List[str]) -> Tuple[List[str], Optional[str]]:
+    """
+    Find -f/--file argument in argv. If present and not '-', return:
+      (argv_without_file_path_but_with_dash, file_path)
+    Otherwise return (argv, None).
+
+    Supports: -f path, -f=path, --file path, --file=path
+    """
+    new_args: List[str] = [argv[0]]
+    file_path: Optional[str] = None
+    i = 1
+    while i < len(argv):
+        a = argv[i]
+        if a == '-f' or a == '--file':
+            if i + 1 < len(argv):
+                file_path = argv[i + 1]
+                # replace with stdin
+                new_args.extend([a, '-'])
+                i += 2
+                continue
+        elif a.startswith('-f='):
+            file_path = a.split('=', 1)[1]
+            new_args.append('-f-')
+            i += 1
+            continue
+        elif a.startswith('--file='):
+            file_path = a.split('=', 1)[1]
+            new_args.append('--file=-')
+            i += 1
+            continue
+
+        new_args.append(a)
+        i += 1
+
+    # If user already passed '-' we don’t change anything
+    if file_path == '-':
+        file_path = None
+    return new_args, file_path
 
 
 def run(args: List[str]) -> int:
     """
     Run the underlying mermaid-ascii binary, forwarding CLI args.
-
-    Parameters
-    ----------
-    args : list[str]
-        Typically sys.argv
-
-    Returns
-    -------
-    int
-        Process return code.
+    If -f/--file points to a file, normalize newlines and pipe via stdin.
     """
     bin_path = _resolve_binary()
-    cmd = [bin_path] + args[1:]
-    # inherit stdout/stderr so help/output streams naturally
-    completed = subprocess.run(cmd)
+
+    # Normalize file input across platforms to avoid CRLF issues on Windows
+    forwarded, file_path = _extract_file_arg(args)
+
+    input_text: Optional[str] = None
+    if file_path:
+        p = Path(file_path)
+        # Read as text, normalize to '\n'
+        input_text = (
+            p.read_text(encoding='utf-8')
+            .replace('\r\n', '\n')
+            .replace('\r', '\n')
+        )
+
+    # subprocess: inherit stdio unless piping input
+    if input_text is None:
+        completed = subprocess.run([bin_path] + forwarded[1:])
+    else:
+        completed = subprocess.run(
+            [bin_path] + forwarded[1:], input=input_text, text=True
+        )
     return completed.returncode
 
 
 def mermaid_ascii() -> None:
-    """Console entry point defined in pyproject (tool.poetry.scripts)."""
-    rc = run(sys.argv)
-    sys.exit(rc)
+    """Console entry point."""
+    sys.exit(run(sys.argv))
 
 
 if __name__ == '__main__':

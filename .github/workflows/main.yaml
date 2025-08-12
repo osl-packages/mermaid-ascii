@@ -96,4 +96,4 @@ jobs:
       - name: Smoke test (Windows, Python API)
         if: matrix.os == 'windows-latest'
         shell: pwsh
-        run: make smoke-test
+        run: make smoke-test-menu

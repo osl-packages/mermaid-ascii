@@ -92,7 +92,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Go is needed to compile the upstream binary on each OS
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22.x"
@@ -106,6 +105,10 @@ jobs:
           auto-update-conda: true
           conda-solver: libmamba
           python-version: "3.11"
+
+      - name: Ensure make on Windows
+        if: runner.os == 'Windows'
+        run: conda install -y m2-make
 
       - name: Build OS-specific binary and wheel
         run: |

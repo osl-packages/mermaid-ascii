@@ -56,10 +56,11 @@ def _resolve_binary() -> str:
 
 def _extract_file_arg(argv: List[str]) -> Tuple[List[str], Optional[str]]:
     """
-    Find -f/--file argument in argv. If present and not '-', return:
-      (argv_without_file_path_but_with_dash, file_path)
-    Otherwise return (argv, None).
+    Find -f/--file argument in argv.
 
+    If present and not '-', return:
+      (argv_with_-f - , file_path)
+    Otherwise return (argv, None).
     Supports: -f path, -f=path, --file path, --file=path
     """
     new_args: List[str] = [argv[0]]
@@ -67,28 +68,26 @@ def _extract_file_arg(argv: List[str]) -> Tuple[List[str], Optional[str]]:
     i = 1
     while i < len(argv):
         a = argv[i]
-        if a == '-f' or a == '--file':
+        if a in ('-f', '--file'):
             if i + 1 < len(argv):
                 file_path = argv[i + 1]
-                # replace with stdin
-                new_args.extend([a, '-'])
+                new_args.extend([a, '-'])  # <- always pipe via stdin
                 i += 2
                 continue
         elif a.startswith('-f='):
             file_path = a.split('=', 1)[1]
-            new_args.append('-f-')
+            new_args.extend(['-f', '-'])  # <- fix: use two args
             i += 1
             continue
         elif a.startswith('--file='):
             file_path = a.split('=', 1)[1]
-            new_args.append('--file=-')
+            new_args.extend(['--file', '-'])  # <- fix: two args
             i += 1
             continue
 
         new_args.append(a)
         i += 1
 
-    # If user already passed '-' we don’t change anything
     if file_path == '-':
         file_path = None
     return new_args, file_path
@@ -97,24 +96,20 @@ def _extract_file_arg(argv: List[str]) -> Tuple[List[str], Optional[str]]:
 def run(args: List[str]) -> int:
     """
     Run the underlying mermaid-ascii binary, forwarding CLI args.
+
     If -f/--file points to a file, normalize newlines and pipe via stdin.
     """
     bin_path = _resolve_binary()
-
-    # Normalize file input across platforms to avoid CRLF issues on Windows
     forwarded, file_path = _extract_file_arg(args)
 
     input_text: Optional[str] = None
     if file_path:
         p = Path(file_path)
-        # Read as text, normalize to '\n'
-        input_text = (
-            p.read_text(encoding='utf-8')
-            .replace('\r\n', '\n')
-            .replace('\r', '\n')
-        )
+        # Strip UTF-8 BOM if present and normalize line endings
+        txt = p.read_text(encoding='utf-8-sig')
+        txt = txt.lstrip('\ufeff').replace('\r\n', '\n').replace('\r', '\n')
+        input_text = txt
 
-    # subprocess: inherit stdio unless piping input
     if input_text is None:
         completed = subprocess.run([bin_path] + forwarded[1:])
     else:

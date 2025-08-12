@@ -22,12 +22,14 @@ if $BUMP; then
   "$PROJECT_DIR/scripts/versioning.sh" "$MERMAIDASCII_VERSION"
 fi
 
-# Build OS-specific binary
-GOOS="$(go env GOOS)"
+# Decide binary name without using 'go env'
 BIN_NAME="mermaid-ascii"
-if [[ "$GOOS" == "windows" ]]; then
+if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
   BIN_NAME="mermaid-ascii.exe"
+  echo "[II] GOROOT=$GOROOT"
 fi
+
+go version
 go build -o "$BIN_NAME"
 
 mkdir -p "$PROJECT_DIR/src/mermaid_ascii"

@@ -10,11 +10,16 @@ on:
     branches: [main]
 
 jobs:
-  build:
+  prep:
+    name: Prepare version bump
     runs-on: ubuntu-latest
     defaults:
       run:
         shell: bash -l {0}
+    outputs:
+      version: ${{ steps.buildpkg.outputs.version }}
+      changed: ${{ steps.buildpkg.outputs.changed }}
+      tag_exists: ${{ steps.tagcheck.outputs.exists }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,10 +44,8 @@ jobs:
           set -euo pipefail
           make binary
           poetry build
-          # extract version from pyproject AFTER versioning
           VER="$(python scripts/get_version.py)"
           echo "version=$VER" >> "$GITHUB_OUTPUT"
-          # mark if pyproject changed
           if git diff --quiet -- pyproject.toml; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
@@ -58,8 +61,7 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Commit & tag only when version changed (schedule/dispatch runs)
-      - name: Commit changes
+      - name: Commit changes (tag)
         if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && steps.buildpkg.outputs.changed == 'true' && steps.tagcheck.outputs.exists != 'true' }}
         uses: EndBug/add-and-commit@v9
         with:
@@ -69,29 +71,89 @@ jobs:
           add: "pyproject.toml"
           tag: "${{ steps.buildpkg.outputs.version }}"
 
-      # Publish to PyPI only when new version
-      - name: Release to PyPI
-        if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && steps.buildpkg.outputs.changed == 'true' && steps.tagcheck.outputs.exists != 'true' }}
-        env:
-          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
-        run: |
-          poetry config pypi-token.pypi "${PYPI_TOKEN}"
-          poetry publish
+      - name: Nothing to release (prep)
+        if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && (steps.buildpkg.outputs.changed != 'true' || steps.tagcheck.outputs.exists == 'true') }}
+        run: echo "Up-to-date or tag exists. Skipping."
 
-      # Create GitHub Release from the tag we just created
-      - name: Create Release
-        if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && steps.buildpkg.outputs.changed == 'true' && steps.tagcheck.outputs.exists != 'true' }}
-        uses: actions/create-release@latest
+  build-wheels:
+    name: Build wheels (${{ matrix.os }})
+    needs: prep
+    if: ${{ needs.prep.outputs.changed == 'true' && needs.prep.outputs.tag_exists != 'true' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash -l {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Go is needed to compile the upstream binary on each OS
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: "latest"
+          environment-file: conda/env.yaml
+          channels: conda-forge,nodefaults
+          activate-environment: mermaidascii
+          auto-update-conda: true
+          conda-solver: libmamba
+          python-version: "3.11"
+
+      - name: Build OS-specific binary and wheel
+        run: |
+          set -euo pipefail
+          make binary
+          poetry build
+          ls -l dist
+
+      - name: Upload wheels (artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: dist/*.whl
+          if-no-files-found: error
+          retention-days: 3
+
+  publish:
+    name: Publish to PyPI
+    needs: [prep, build-wheels]
+    if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && needs.prep.outputs.changed == 'true' && needs.prep.outputs.tag_exists != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all wheels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish (PyPI)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_TOKEN }}
+          packages-dir: dist
+          skip-existing: true
+
+  create-release:
+    name: Create GitHub Release
+    needs: [prep, publish]
+    if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && needs.prep.outputs.changed == 'true' && needs.prep.outputs.tag_exists != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-release@latest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ steps.buildpkg.outputs.version }}
-          release_name: Release ${{ steps.buildpkg.outputs.version }}
-          body: Update mermaid-ascii to ${{ steps.buildpkg.outputs.version }}
+          tag_name: ${{ needs.prep.outputs.version }}
+          release_name: Release ${{ needs.prep.outputs.version }}
+          body: Update mermaid-ascii to ${{ needs.prep.outputs.version }}
           draft: false
           prerelease: false
-
-      # Optional: no-op when unchanged (gives clear logs)
-      - name: Nothing to release
-        if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && steps.buildpkg.outputs.changed != 'true' || steps.tagcheck.outputs.exists != 'true' }}
-        run: echo "Up-to-date. No release."

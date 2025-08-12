@@ -4,7 +4,12 @@ on: [push, pull_request]
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
 
     defaults:
@@ -24,11 +29,18 @@ jobs:
           conda-solver: libmamba
           python-version: "3.11"
 
-      - name: Install package
+      # Build OS-specific mermaid-ascii binary and place it under src/...
+      # (scripts/binary.sh handles .exe on Windows)
+      - name: Build upstream binary
+        run: |
+          bash ./scripts/binary.sh
+
+      - name: Build & install package
         run: |
           poetry build
-          poetry install
-          pip install $(ls dist/mermaid*tar.gz)
+          python -m pip install -U pip
+          # Prefer the wheel (platform-specific), fallback to sdist
+          python -m pip install dist/*.whl || python -m pip install dist/*.tar.gz
 
       - name: Test cmd & binary
         run: make smoke-test

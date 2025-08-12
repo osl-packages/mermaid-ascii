@@ -92,6 +92,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Install Go first so we can capture its absolute path
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+
+      # Resolve GO_BIN path (cross-shell safe)
+      - name: Resolve go path
+        id: gopath
+        shell: pwsh
+        run: |
+          $go = (Get-Command go).Path
+          "go_bin=$go" >> $env:GITHUB_OUTPUT
+
       - uses: conda-incubator/setup-miniconda@v3
         with:
           miniforge-version: "latest"
@@ -102,29 +115,16 @@ jobs:
           conda-solver: libmamba
           python-version: "3.11"
 
-      # Install Go toolchain per-OS
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.22.x"
-
-      # Ensure the setup-go toolcache wins for *future login shells* on Windows
-      - name: Pin Go toolchain for login shells (Windows)
+      - name: Ensure make on Windows
         if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          set -e
-          GO_BIN="$(command -v go)"
-          echo "Found go at: $GO_BIN"
-          # GOROOT is two dirs up from bin
-          GOROOT_DIR="$(cd "$(dirname "$GO_BIN")/.." && pwd -W)"
-          echo "GOROOT=$GOROOT_DIR" >> "$GITHUB_ENV"
-          echo "$GOROOT_DIR/bin" >> "$GITHUB_PATH"
-          go version
-          go env
+        run: conda install -y m2-make
 
       - name: Build OS-specific binary and wheel
+        env:
+          GO_BIN: ${{ steps.gopath.outputs.go_bin }}
         run: |
           set -euo pipefail
+          echo "Using GO_BIN=$GO_BIN"
           bash ./scripts/binary.sh
           poetry build
           ls -l dist || dir dist

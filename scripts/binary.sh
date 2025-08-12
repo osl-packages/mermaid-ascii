@@ -11,7 +11,6 @@ MERMAIDASCII_DIR="$PROJECT_DIR/build/mermaid_ascii"
 
 rm -rf "$MERMAIDASCII_DIR"
 git clone https://github.com/AlexanderGrooff/mermaid-ascii "$MERMAIDASCII_DIR"
-
 pushd "$MERMAIDASCII_DIR" >/dev/null
 
 MERMAIDASCII_VERSION="$(git tag --sort=-v:refname | head -n 1)"
@@ -22,15 +21,16 @@ if $BUMP; then
   "$PROJECT_DIR/scripts/versioning.sh" "$MERMAIDASCII_VERSION"
 fi
 
-# Decide binary name without using 'go env'
+# Use the go resolved by the workflow; fallback to PATH 'go'
+GO_CMD="${GO_BIN:-go}"
+
 BIN_NAME="mermaid-ascii"
 if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
   BIN_NAME="mermaid-ascii.exe"
-  echo "[II] GOROOT=$GOROOT"
 fi
 
-go version
-go build -o "$BIN_NAME"
+"$GO_CMD" version
+"$GO_CMD" build -o "$BIN_NAME"
 
 mkdir -p "$PROJECT_DIR/src/mermaid_ascii"
 cp -f "$BIN_NAME" "$PROJECT_DIR/src/mermaid_ascii/$BIN_NAME"

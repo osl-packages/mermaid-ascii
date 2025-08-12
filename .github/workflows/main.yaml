@@ -45,11 +45,6 @@ jobs:
           # Prefer the wheel; fallback to sdist
           python -m pip install dist/*.whl || python -m pip install dist/*.tar.gz
 
-      - name: Test cmd & binary (Unix)
-        if: matrix.os != 'windows-latest'
-        shell: bash -l {0}
-        run: make smoke-test
-
       # ---------- Windows path (PowerShell + setup-go + setup-python) ----------
       - name: Setup Go (Windows)
         if: matrix.os == 'windows-latest'
@@ -92,13 +87,13 @@ jobs:
           python -m pip install -U pip
           python -m pip install "$($pkg.FullName)"
 
+      # SMOKE TEST
+      - name: Test cmd & binary (Unix)
+        if: matrix.os != 'windows-latest'
+        shell: bash -l {0}
+        run: make smoke-test
+
       - name: Smoke test (Windows, Python API)
         if: matrix.os == 'windows-latest'
         shell: pwsh
-        run: |
-          python - << 'PY'
-          from mermaid_ascii import mermaid_to_ascii
-          out = mermaid_to_ascii("graph TD\nA-->B\n")
-          assert "A" in out and "B" in out, out
-          print(out)
-          PY
+        run: make smoke-test

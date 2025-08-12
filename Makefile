@@ -9,4 +9,5 @@ binary:
 smoke-test:
 	set -ex
 	mermaid-ascii --help
+	mermaid-ascii -f tests/smoke_test.txt
 	set +ex

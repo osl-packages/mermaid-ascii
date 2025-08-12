@@ -80,27 +80,21 @@ jobs:
     needs: prep
     if: ${{ needs.prep.outputs.changed == 'true' && needs.prep.outputs.tag_exists != 'true' }}
     runs-on: ${{ matrix.os }}
+
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-    defaults:
-      run:
-        shell: bash -l {0}
+
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # Resolve GO_BIN path (cross-shell safe)
-      - name: Resolve go path
-        id: gopath
-        shell: pwsh
-        run: |
-          $go = (Get-Command go).Path
-          "go_bin=$go" >> $env:GITHUB_OUTPUT
-
-      - uses: conda-incubator/setup-miniconda@v3
+      # ---------- Linux/macOS path (Conda + Bash) ----------
+      - name: Setup Conda (Unix)
+        if: runner.os != 'Windows'
+        uses: conda-incubator/setup-miniconda@v3
         with:
           miniforge-version: "latest"
           environment-file: conda/env.yaml
@@ -110,31 +104,48 @@ jobs:
           conda-solver: libmamba
           python-version: "3.11"
 
-      - name: Force GOROOT for conda go (Windows)
+      - name: Setup Conda (Windows)
         if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          set -e
-          GO_BIN="$(command -v go)"
-          # Guess GOROOT relative to go.exe: .../bin/go.exe -> two dirs up
-          GOROOT_DIR="$(cd "$(dirname "$GO_BIN")/.." && pwd -W)"
-          echo "Using go at: $GO_BIN"
-          echo "Setting GOROOT to: $GOROOT_DIR"
-          echo "GOROOT=$GOROOT_DIR" >> "$GITHUB_ENV"
-          echo "$GOROOT_DIR/bin" >> "$GITHUB_PATH"
-          go version
-          go env
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: "latest"
+          environment-file: conda/env-ci-win.yaml
+          channels: conda-forge,nodefaults
+          activate-environment: mermaidascii
+          auto-update-conda: true
+          conda-solver: libmamba
+          python-version: "3.11"
 
-      - name: Build OS-specific binary and wheel
-        env:
-          GO_BIN: ${{ steps.gopath.outputs.go_bin }}
+      - name: Build upstream binary (Unix)
+        if: runner.os != 'Windows'
+        shell: bash -l {0}
         run: |
           set -euo pipefail
-          echo "Using GO_BIN=$GO_BIN"
-          bash ./scripts/binary.sh
+          bash ./scripts/binary.sh   # no --bump in matrix
           poetry build
-          ls -l dist || dir dist
+          ls -l dist
 
+      # ---------- Windows path (PowerShell + setup-go + setup-python) ----------
+      - name: Setup Go (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+
+      - name: Build upstream binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./scripts/binary.ps1
+
+      - name: Build wheel (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          poetry build
+          Get-ChildItem dist
+
+      # ---------- Common: upload artifact ----------
       - name: Upload wheels (artifact)
         uses: actions/upload-artifact@v4
         with:

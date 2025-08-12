@@ -13,7 +13,7 @@ packages = [
   {include = "mermaid_ascii", from = "src"}
 ]
 include = [
-  "src/mermaid_ascii/mermaid-ascii",
+  "src/mermaid_ascii/",
   "scripts/"
 ]
 

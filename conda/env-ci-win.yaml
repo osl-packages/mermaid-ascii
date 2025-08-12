@@ -1,0 +1,12 @@
+name: mermaidascii
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - git
+  - make
+  - python
+  - poetry
+  - pip
+  - pip:
+      - pre-commit
